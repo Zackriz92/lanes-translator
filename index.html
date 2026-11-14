@@ -1,0 +1,983 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Lanes Translator</title>
+<style>
+/* Layout: one-screen app. Status bar, collapsible setup, speaker legend,
+   scrolling conversation (feed or one lane per speaker), action dock. */
+:root {
+  --bg: #eef1f4; --panel: #ffffff; --ink: #15212c; --muted: #5b6876; --line: #d3dae1;
+  --accent: #0f5fd0; --accent-ink: #ffffff; --live: #c8321f; --live-ink: #ffffff;
+  --note-bg: #fff3d1; --note-ink: #5a4100; --err-bg: #fde4df; --err-ink: #7c1c0e;
+  --s1: #0f5fd0; --s2: #a85400; --s3: #1c7c4a; --s4: #a3238e; --s5: #00798c; --s6: #6b4fd3;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --gutter-l: max(16px, env(safe-area-inset-left, 0px));
+  --gutter-r: max(16px, env(safe-area-inset-right, 0px));
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f151b; --panel: #19232c; --ink: #e8eef4; --muted: #94a2b0; --line: #2b3844;
+    --accent: #5aa2ff; --accent-ink: #06121f; --live: #ff6a55; --live-ink: #1d0703;
+    --note-bg: #3a3013; --note-ink: #f6dfa0; --err-bg: #44201a; --err-ink: #ffc9bf;
+    --s1: #6fb0ff; --s2: #f0a94a; --s3: #5fcf8f; --s4: #e77fd4; --s5: #4fd0e0; --s6: #a995ff;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.45 var(--font);
+  display: flex; flex-direction: column; height: 100vh; height: 100dvh;
+}
+[hidden] { display: none !important; }
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* status bar */
+.bar {
+  display: flex; align-items: center; gap: 12px;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) var(--gutter-r) 10px var(--gutter-l);
+  background: var(--panel); border-bottom: 1px solid var(--line);
+}
+.bar h1 { margin: 0; font-size: 1.05rem; font-weight: 700; letter-spacing: -0.01em; }
+.bar h1 span { color: var(--muted); font-weight: 500; }
+.status {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 8px;
+  font-size: 0.85rem; font-variant-numeric: tabular-nums; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px;
+}
+.status i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.status[data-state="listening"] { color: var(--ink); border-color: var(--live); }
+.status[data-state="listening"] i { background: var(--live); animation: pulse 1.4s ease-in-out infinite; }
+.status[data-state="connecting"] i, .status[data-state="reconnecting"] i { background: var(--s2); }
+@keyframes pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .status i { animation: none !important; } }
+.meter { width: 44px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.meter b { display: block; height: 100%; width: 0; background: var(--s3); transition: width 90ms linear; }
+
+/* setup */
+.setup { background: var(--panel); border-bottom: 1px solid var(--line); }
+.setup > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px;
+  padding: 10px var(--gutter-r) 10px var(--gutter-l); font-size: 0.9rem; font-weight: 600;
+}
+.setup > summary::-webkit-details-marker { display: none; }
+.setup > summary::after { content: "Show"; margin-left: auto; font-weight: 500; color: var(--accent); }
+.setup[open] > summary::after { content: "Hide"; }
+.setup > summary small { font-weight: 500; color: var(--muted); }
+.fields {
+  display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  padding: 4px var(--gutter-r) 16px var(--gutter-l);
+}
+.field { display: grid; gap: 6px; min-width: 0; align-content: start; }
+.field > label, .field > .lab { font-size: 0.8rem; font-weight: 600; color: var(--muted); letter-spacing: 0.02em; }
+.field input[type="text"], .field input[type="password"], .field textarea {
+  width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg); min-width: 0;
+}
+.field textarea { min-height: 96px; resize: vertical; font-family: var(--mono); font-size: 0.85rem; }
+.field .help { font-size: 0.8rem; color: var(--muted); margin: 0; }
+.field .help a { color: var(--accent); }
+.keyrow { display: flex; gap: 8px; }
+.keyrow input { flex: 1; }
+.ghost {
+  border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 8px 12px;
+  font-size: 0.85rem; font-weight: 600;
+}
+.ghost:disabled { opacity: 0.45; cursor: default; }
+.check { display: flex; gap: 8px; align-items: center; font-size: 0.85rem; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg label { position: relative; }
+.seg input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
+.seg span { display: block; padding: 8px 14px; font-size: 0.9rem; font-weight: 600; }
+.seg label + label span { border-left: 1px solid var(--line); }
+.seg input:checked + span { background: var(--accent); color: var(--accent-ink); }
+.seg input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* notices */
+.notice { margin: 10px var(--gutter-r) 0 var(--gutter-l); padding: 10px 12px; border-radius: 8px; font-size: 0.9rem; background: var(--err-bg); color: var(--err-ink); }
+.notice[data-kind="info"] { background: var(--note-bg); color: var(--note-ink); }
+
+/* speakers */
+.speakers {
+  display: flex; gap: 8px; align-items: center; overflow-x: auto;
+  padding: 10px var(--gutter-r) 0 var(--gutter-l);
+}
+.chip { --c: var(--s1); display: inline-flex; align-items: stretch; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); flex: none; overflow: hidden; }
+.chip button { border: 0; background: transparent; padding: 6px 10px; font-size: 0.85rem; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.chip .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
+.chip .edit { padding: 6px 9px 6px 4px; color: var(--muted); }
+.chip .edit svg { width: 13px; height: 13px; display: block; }
+.chip[aria-current="true"] { border-color: var(--c); box-shadow: inset 0 0 0 1px var(--c); }
+.chip input { border: 0; background: transparent; padding: 6px 10px; width: 9.5em; font-size: 0.85rem; font-weight: 600; outline: none; }
+.chip.all button { color: var(--muted); }
+.chip.all[aria-current="true"] button { color: var(--ink); }
+
+/* conversation */
+.scroll { flex: 1; min-height: 0; overflow: auto; padding: 12px var(--gutter-r) 16px var(--gutter-l); position: relative; }
+.eg { margin: 0 0 10px; font-size: 0.85rem; padding: 8px 12px; border-radius: 8px; background: var(--note-bg); color: var(--note-ink); }
+.empty { margin: 12vh auto 0; max-width: 30ch; text-align: center; color: var(--muted); }
+.feed { display: flex; flex-direction: column; gap: 8px; max-width: 760px; margin: 0 auto; }
+.feed.lanes { display: grid; max-width: none; grid-template-columns: repeat(var(--n, 1), minmax(190px, 1fr)); align-content: start; }
+.feed.lanes .b { grid-column: var(--col, 1); grid-row: var(--row, auto); }
+.eg, .empty { max-width: 760px; margin-left: auto; margin-right: auto; }
+.b {
+  --c: var(--s1);
+  background: var(--panel);
+  background: color-mix(in srgb, var(--c) 9%, var(--panel));
+  border-radius: 10px; padding: 10px 12px; display: grid; gap: 4px; min-width: 0;
+}
+.b[data-c="2"], .chip[data-c="2"] { --c: var(--s2); }
+.b[data-c="3"], .chip[data-c="3"] { --c: var(--s3); }
+.b[data-c="4"], .chip[data-c="4"] { --c: var(--s4); }
+.b[data-c="5"], .chip[data-c="5"] { --c: var(--s5); }
+.b[data-c="6"], .chip[data-c="6"] { --c: var(--s6); }
+.b-head { display: flex; gap: 8px; align-items: baseline; font-size: 0.78rem; min-width: 0; }
+.who { font-weight: 700; color: var(--c); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lang { color: var(--muted); font-family: var(--mono); letter-spacing: 0.04em; white-space: nowrap; }
+.b time { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+.main { margin: 0; font-size: 1.2rem; line-height: 1.35; overflow-wrap: anywhere; }
+.sub { margin: 0; font-size: 0.9rem; color: var(--muted); overflow-wrap: anywhere; }
+.tail { opacity: 0.55; }
+.wait { color: var(--muted); }
+.latest {
+  position: sticky; bottom: 4px; margin: 8px auto 0; display: block;
+  border: 0; border-radius: 999px; padding: 8px 14px; font-size: 0.85rem; font-weight: 700;
+  background: var(--ink); color: var(--bg);
+}
+
+/* dock */
+.dock {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  padding: 10px var(--gutter-r) calc(10px + env(safe-area-inset-bottom, 0px)) var(--gutter-l);
+  background: var(--panel); border-top: 1px solid var(--line);
+}
+.go {
+  border: 0; border-radius: 10px; padding: 12px 22px; font-size: 1rem; font-weight: 700;
+  background: var(--accent); color: var(--accent-ink); min-width: 7.5em;
+}
+.go[data-on="true"] { background: var(--live); color: var(--live-ink); }
+.dock .spacer { flex: 1; }
+@media (max-width: 520px) {
+  .go { flex: 1 1 100%; order: -1; }
+  .dock .spacer { display: none; }
+  .dock .ghost { flex: 1; padding: 8px 6px; }
+}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <h1>Lanes <span>Translator</span></h1>
+  <div class="meter" aria-hidden="true" title="Microphone level"><b id="level"></b></div>
+  <div class="status" id="status" data-state="idle" role="status"><i></i><span id="statusText">Ready</span></div>
+</header>
+
+<details class="setup" id="setup" open>
+  <summary>Setup <small id="setupSummary"></small></summary>
+  <div class="fields">
+    <div class="field">
+      <label for="key">Speech service key (Soniox)</label>
+      <div class="keyrow">
+        <input type="password" id="key" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your key">
+        <button type="button" class="ghost" id="keyShow" aria-pressed="false">Show</button>
+      </div>
+      <label class="check"><input type="checkbox" id="remember"> Remember the key on this device</label>
+      <p class="help">The key stays in this browser and is sent only to the speech service. Create one at <a href="https://console.soniox.com" target="_blank" rel="noopener">console.soniox.com</a>.</p>
+    </div>
+    <div class="field">
+      <span class="lab" id="targetLab">Translate everything into</span>
+      <div class="seg" role="radiogroup" aria-labelledby="targetLab">
+        <label><input type="radio" name="target" id="t-en" value="en" checked><span>English</span></label>
+        <label><input type="radio" name="target" id="t-zh" value="zh"><span lang="zh-Hans">中文</span></label>
+        <label><input type="radio" name="target" id="t-ru" value="ru"><span lang="ru">Русский</span></label>
+      </div>
+      <p class="help">It listens for English, Chinese and Russian at the same time. Change this before you press Start.</p>
+      <label for="topic">Meeting topic</label>
+      <input type="text" id="topic" maxlength="120" value="Shipyard construction, blasting and painting works">
+    </div>
+    <div class="field">
+      <label for="terms">Site terms, one per line</label>
+      <textarea id="terms" spellcheck="false"></textarea>
+      <p class="help">Words it should recognise. To force a translation, write <code>source = target</code>, for example <code>грунтовка = primer</code>.</p>
+    </div>
+  </div>
+</details>
+
+<div class="notice" id="notice" role="alert" hidden></div>
+<div class="speakers" id="speakers" hidden></div>
+
+<div class="scroll" id="scroll">
+  <p class="eg" id="eg" hidden>Example conversation, not from your microphone. Press Start to replace it with your meeting.</p>
+  <p class="empty" id="empty" hidden>Press Start and put this device in the middle of the table.</p>
+  <div class="feed" id="feed" aria-live="off"></div>
+  <button type="button" class="latest" id="latest" hidden>Jump to latest</button>
+</div>
+
+<footer class="dock">
+  <button type="button" class="go" id="go" data-on="false">Start</button>
+  <span class="spacer"></span>
+  <button type="button" class="ghost" id="view" aria-pressed="false" title="Switch between one feed and one lane per speaker">Lanes</button>
+  <button type="button" class="ghost" id="copy" disabled>Copy</button>
+  <button type="button" class="ghost" id="save" disabled>Save</button>
+  <button type="button" class="ghost" id="clear" disabled>Clear</button>
+</footer>
+
+<script>
+'use strict';
+
+// <engine>
+// Turns the speech service's token stream into utterances ("bubbles"), one per
+// speaker turn. Final tokens are appended for good; non-final tokens are a live
+// guess that is thrown away and rebuilt on every message.
+var PAUSE_MS = 2500;
+
+function createEngine() {
+  var st = { bubbles: [], session: 0, offsetMs: 0, nextId: 1 };
+  var cursor = { cur: null, boundary: true, lastEnd: null };
+  var provTouched = [];
+
+  function spkKey(raw) { return st.session <= 1 ? String(raw) : st.session + ':' + raw; }
+
+  function newBubble(spk, startMs, prov) {
+    var b = { id: st.nextId++, spk: spk, langs: {}, langTail: null,
+              orig: '', trans: '', origTail: '', transTail: '',
+              prov: prov, t: st.offsetMs + (startMs || 0) };
+    st.bubbles.push(b);
+    return b;
+  }
+
+  function lastOf(spk) {
+    for (var i = st.bubbles.length - 1; i >= 0; i--) if (st.bubbles[i].spk === spk) return st.bubbles[i];
+    return null;
+  }
+
+  function apply(c, t, prov, ch) {
+    var text = t.text || '';
+    if (text === '<end>' || text === '<fin>') { c.boundary = true; return; }
+    if (!text) return;
+    var hasSpk = t.speaker !== undefined && t.speaker !== null && t.speaker !== '';
+    var b;
+
+    if (t.translation_status === 'translation') {
+      b = hasSpk ? (lastOf(spkKey(t.speaker)) || c.cur) : c.cur;
+      if (!b) {
+        b = newBubble(hasSpk ? spkKey(t.speaker) : spkKey('?'), null, prov);
+        ch.added.push(b); c.cur = b; c.boundary = false;
+      }
+      if (prov) { b.transTail += text; if (!b.prov) provTouched.push(b); }
+      else b.trans += text;
+      ch.dirty.add(b);
+      return;
+    }
+
+    var spk = hasSpk ? spkKey(t.speaker) : (c.cur ? c.cur.spk : spkKey('?'));
+    var gap = (c.lastEnd != null && t.start_ms != null) ? t.start_ms - c.lastEnd : 0;
+    b = c.cur;
+    if (!b || c.boundary || b.spk !== spk || gap > PAUSE_MS) {
+      b = newBubble(spk, t.start_ms, prov);
+      ch.added.push(b); c.cur = b; c.boundary = false;
+    }
+    if (prov) {
+      b.origTail += text;
+      if (!b.langTail && t.language) b.langTail = t.language;
+      if (!b.prov) provTouched.push(b);
+    } else {
+      b.orig += text;
+      if (t.language) b.langs[t.language] = (b.langs[t.language] || 0) + text.length;
+    }
+    if (t.end_ms != null) c.lastEnd = t.end_ms;
+    ch.dirty.add(b);
+  }
+
+  function dropProvisional(ch) {
+    while (st.bubbles.length && st.bubbles[st.bubbles.length - 1].prov) ch.removed.push(st.bubbles.pop());
+    for (var i = 0; i < provTouched.length; i++) {
+      var b = provTouched[i];
+      b.origTail = ''; b.transTail = ''; b.langTail = null;
+      ch.dirty.add(b);
+    }
+    provTouched = [];
+  }
+
+  function changes() { return { added: [], removed: [], dirty: new Set() }; }
+
+  function tidy(ch) {
+    ch.removed.forEach(function (b) { ch.dirty.delete(b); });
+    return ch;
+  }
+
+  return {
+    state: st,
+    ingest: function (tokens) {
+      var ch = changes();
+      dropProvisional(ch);
+      var i;
+      for (i = 0; i < tokens.length; i++) if (tokens[i].is_final) apply(cursor, tokens[i], false, ch);
+      var c2 = { cur: cursor.cur, boundary: cursor.boundary, lastEnd: cursor.lastEnd };
+      for (i = 0; i < tokens.length; i++) if (!tokens[i].is_final) apply(c2, tokens[i], true, ch);
+      return tidy(ch);
+    },
+    // Keep whatever is on screen as final text (used when a session ends).
+    settle: function () {
+      var ch = changes();
+      st.bubbles.forEach(function (b) {
+        if (b.prov || b.origTail || b.transTail) {
+          b.orig += b.origTail; b.trans += b.transTail;
+          if (b.langTail && !Object.keys(b.langs).length) b.langs[b.langTail] = 1;
+          b.origTail = ''; b.transTail = ''; b.langTail = null; b.prov = false;
+          ch.dirty.add(b);
+        }
+      });
+      provTouched = [];
+      cursor = { cur: null, boundary: true, lastEnd: null };
+      return ch;
+    },
+    newSession: function (offsetMs) {
+      var ch = this.settle();
+      st.session += 1; st.offsetMs = offsetMs || 0;
+      return ch;
+    },
+    clear: function () {
+      st.bubbles = []; st.session = 0; st.offsetMs = 0;
+      provTouched = [];
+      cursor = { cur: null, boundary: true, lastEnd: null };
+    }
+  };
+}
+
+function langOf(b) {
+  var best = null, n = -1;
+  for (var k in b.langs) if (b.langs[k] > n) { n = b.langs[k]; best = k; }
+  return best || b.langTail || null;
+}
+
+function sampleTokens() {
+  var out = [];
+  function say(spk, lang, text, tr, start) {
+    out.push({ text: text, is_final: true, speaker: spk, language: lang, translation_status: tr ? 'original' : 'none', start_ms: start, end_ms: start + 3000 });
+    if (tr) out.push({ text: tr, is_final: true, speaker: spk, language: 'en', source_language: lang, translation_status: 'translation' });
+    out.push({ text: '<end>', is_final: true });
+  }
+  say('1', 'ru', 'Мы закончили дробеструйную очистку блока сегодня утром.', 'We finished blasting the block this morning.', 2000);
+  say('2', 'zh', '底漆今天下午可以开始喷吗？', 'Can we start spraying the primer this afternoon?', 7000);
+  say('3', 'en', 'Only after QC signs off the surface profile.', null, 12000);
+  say('1', 'ru', 'Инспектор придёт в два часа.', 'The inspector will come at two o’clock.', 17000);
+  say('2', 'zh', '好的，那我们先把设备准备好。', 'OK, then we’ll get the equipment ready first.', 22000);
+  return out;
+}
+
+function makeResampler(inRate, outRate) {
+  if (inRate === outRate) return function (x) { return x; };
+  var ratio = inRate / outRate, pos = 0, carry = new Float32Array(0);
+  return function (input) {
+    var buf = new Float32Array(carry.length + input.length);
+    buf.set(carry, 0); buf.set(input, carry.length);
+    var outLen = Math.max(0, Math.floor((buf.length - pos) / ratio));
+    var out = new Float32Array(outLen);
+    for (var i = 0; i < outLen; i++) {
+      var a = pos + i * ratio, z = Math.min(Math.ceil(a + ratio), buf.length), s = 0, n = 0;
+      for (var j = Math.floor(a); j < z; j++) { s += buf[j]; n++; }
+      out[i] = n ? s / n : 0;
+    }
+    var used = pos + outLen * ratio, k = Math.floor(used);
+    carry = buf.slice(k); pos = used - k;
+    return out;
+  };
+}
+
+function parseTerms(text) {
+  var terms = [], pairs = [];
+  String(text || '').split(/\r?\n/).forEach(function (line) {
+    line = line.trim();
+    if (!line) return;
+    var i = line.indexOf('=');
+    if (i > 0 && i < line.length - 1) {
+      var s = line.slice(0, i).trim(), t = line.slice(i + 1).trim();
+      if (s && t) { pairs.push({ source: s, target: t }); return; }
+    }
+    terms.push(line);
+  });
+  return { terms: terms, pairs: pairs };
+}
+// </engine>
+
+var WS_URL = 'wss://stt-rt.soniox.com/transcribe-websocket';
+var MODEL = 'stt-rt-v6';
+var RATE = 16000;
+var LANG_TAG = { en: 'EN', zh: '中文', ru: 'RU' };
+var LANG_ATTR = { en: 'en', zh: 'zh-Hans', ru: 'ru' };
+var DEFAULT_TERMS = ['DFT', 'Sa 2.5', 'holding primer', 'surface profile', '喷砂', '底漆', 'грунтовка', 'дробеструйная очистка'].join('\n');
+
+function $(id) { return document.getElementById(id); }
+var store = {
+  get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set: function (k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
+};
+
+var engine = createEngine();
+var els = new Map();          // bubble id -> element
+var speakers = new Map();     // speaker key -> { key, name, c, col }
+var solo = null;
+var shownTarget = 'en';       // language the conversation on screen was translated into
+var sampleShown = false;
+var stick = true;
+
+var run = { active: false, ws: null, open: false, everOpened: false, finished: false, fatal: false,
+            retries: 0, pending: [], baseMs: 0, startedAt: 0, timer: null, wake: null };
+var audio = { ctx: null, stream: null, node: null, src: null, resample: null, acc: [], accLen: 0, lastLevel: 0 };
+
+/* ---------- rendering ---------- */
+
+function fmt(ms) {
+  var s = Math.max(0, Math.floor(ms / 1000)), m = Math.floor(s / 60), h = Math.floor(m / 60);
+  var mm = String(m % 60).padStart(2, '0'), ss = String(s % 60).padStart(2, '0');
+  return h ? h + ':' + mm + ':' + ss : mm + ':' + ss;
+}
+
+function target() {
+  var r = document.querySelector('input[name="target"]:checked');
+  return r ? r.value : 'en';
+}
+
+function ensureSpeaker(key) {
+  var sp = speakers.get(key);
+  if (sp) return sp;
+  var n = speakers.size + 1;
+  sp = { key: key, name: /\?$/.test(key) ? 'Speaker' : 'Speaker ' + n, c: ((n - 1) % 6) + 1, col: n };
+  speakers.set(key, sp);
+  renderSpeakers();
+  return sp;
+}
+
+function setText(p, fin, tail, lang) {
+  p.textContent = '';
+  if (lang && LANG_ATTR[lang]) p.lang = LANG_ATTR[lang]; else p.removeAttribute('lang');
+  var a = fin.replace(/^\s+/, '');
+  if (a) p.appendChild(document.createTextNode(a));
+  if (tail) {
+    var s = document.createElement('span');
+    s.className = 'tail';
+    s.textContent = a ? tail : tail.replace(/^\s+/, '');
+    p.appendChild(s);
+  }
+}
+
+function paint(b) {
+  var el = els.get(b.id);
+  if (!el) return;
+  var sp = ensureSpeaker(b.spk), tgt = shownTarget, lang = langOf(b);
+  var hasTr = (b.trans + b.transTail).trim().length > 0;
+  var foreign = lang ? lang !== tgt : hasTr;
+  el.dataset.c = sp.c;
+  el.style.setProperty('--col', sp.col);
+  el.style.setProperty('--row', engine.state.bubbles.indexOf(b) + 1);
+  el.hidden = !!solo && solo !== b.spk;
+  el.querySelector('.who').textContent = sp.name;
+  var tag = lang ? (LANG_TAG[lang] || lang.toUpperCase()) : '';
+  if (tag && foreign) tag += ' → ' + (LANG_TAG[tgt] || tgt.toUpperCase());
+  el.querySelector('.lang').textContent = tag;
+  el.querySelector('time').textContent = fmt(b.t);
+  var main = el.querySelector('.main'), sub = el.querySelector('.sub');
+  if (foreign) {
+    if (hasTr) { main.classList.remove('wait'); setText(main, b.trans, b.transTail, tgt); }
+    else { main.classList.add('wait'); main.removeAttribute('lang'); main.textContent = 'Translating…'; }
+    sub.hidden = false;
+    setText(sub, b.orig, b.origTail, lang);
+  } else {
+    main.classList.remove('wait');
+    setText(main, b.orig, b.origTail, lang);
+    sub.hidden = true; sub.textContent = '';
+  }
+}
+
+function makeEl(b) {
+  var el = document.createElement('article');
+  el.className = 'b';
+  el.innerHTML = '<div class="b-head"><span class="who"></span><span class="lang"></span><time></time></div><p class="main"></p><p class="sub" hidden></p>';
+  els.set(b.id, el);
+  $('feed').appendChild(el);
+}
+
+function render(ch) {
+  ch.removed.forEach(function (b) { var el = els.get(b.id); if (el) el.remove(); els.delete(b.id); });
+  ch.added.forEach(function (b) { if (engine.state.bubbles.indexOf(b) >= 0) makeEl(b); });
+  ch.dirty.forEach(paint);
+  afterRender();
+}
+
+function repaintAll() { engine.state.bubbles.forEach(paint); }
+
+function afterRender() {
+  var n = engine.state.bubbles.length;
+  $('feed').style.setProperty('--n', Math.max(1, speakers.size));
+  $('empty').hidden = n > 0 || run.active;
+  $('eg').hidden = !sampleShown;
+  ['copy', 'save', 'clear'].forEach(function (id) { $(id).disabled = n === 0; });
+  var sc = $('scroll');
+  if (stick) { sc.scrollTop = sc.scrollHeight; $('latest').hidden = true; }
+  else if (run.active && n) $('latest').hidden = false;
+}
+
+var PENCIL = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M11.6 1.6a1.4 1.4 0 0 1 2 0l.8.8a1.4 1.4 0 0 1 0 2L6 12.8 2.5 13.5l.7-3.5 8.4-8.4z"/></svg>';
+
+function renderSpeakers() {
+  var bar = $('speakers');
+  bar.textContent = '';
+  bar.hidden = speakers.size === 0;
+  if (!speakers.size) return;
+  var all = document.createElement('div');
+  all.className = 'chip all';
+  all.setAttribute('aria-current', String(!solo));
+  all.innerHTML = '<button type="button">Everyone</button>';
+  all.firstChild.onclick = function () { setSolo(null); };
+  bar.appendChild(all);
+  speakers.forEach(function (sp) {
+    var chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.dataset.c = sp.c;
+    chip.setAttribute('aria-current', String(solo === sp.key));
+    var pick = document.createElement('button');
+    pick.type = 'button';
+    pick.innerHTML = '<span class="dot"></span>';
+    pick.appendChild(document.createTextNode(sp.name));
+    pick.title = 'Show only ' + sp.name;
+    pick.onclick = function () { setSolo(solo === sp.key ? null : sp.key); };
+    var edit = document.createElement('button');
+    edit.type = 'button'; edit.className = 'edit'; edit.innerHTML = PENCIL;
+    edit.setAttribute('aria-label', 'Rename ' + sp.name);
+    edit.onclick = function () { renameSpeaker(sp, chip); };
+    chip.appendChild(pick); chip.appendChild(edit);
+    bar.appendChild(chip);
+  });
+}
+
+function renameSpeaker(sp, chip) {
+  chip.textContent = '';
+  var inp = document.createElement('input');
+  inp.type = 'text'; inp.maxLength = 24; inp.value = sp.name;
+  inp.id = 'rename-' + sp.col;
+  inp.setAttribute('aria-label', 'New name for ' + sp.name);
+  chip.appendChild(inp);
+  var done = false;
+  function commit(save) {
+    if (done) return; done = true;
+    var v = inp.value.trim();
+    if (save && v) sp.name = v;
+    renderSpeakers(); repaintAll();
+  }
+  inp.onkeydown = function (e) { if (e.key === 'Enter') commit(true); else if (e.key === 'Escape') commit(false); };
+  inp.onblur = function () { commit(true); };
+  inp.focus(); inp.select();
+}
+
+function setSolo(key) {
+  solo = key;
+  applyView();
+  renderSpeakers(); repaintAll(); afterRender();
+}
+
+var lanes = false;
+function applyView() {
+  $('feed').classList.toggle('lanes', lanes && !solo);
+  $('view').textContent = lanes ? 'Feed' : 'Lanes';
+  $('view').setAttribute('aria-pressed', String(lanes));
+}
+
+function notice(msg, kind) {
+  var n = $('notice');
+  if (!msg) { n.hidden = true; n.textContent = ''; return; }
+  n.dataset.kind = kind || 'error';
+  n.textContent = msg;
+  n.hidden = false;
+}
+
+function setStatus(state) {
+  $('status').dataset.state = state;
+  var label = { idle: 'Ready', connecting: 'Connecting…', reconnecting: 'Reconnecting…', listening: 'Listening ' + fmt(elapsed()) }[state];
+  $('statusText').textContent = label;
+  $('go').dataset.on = String(run.active);
+  $('go').textContent = run.active ? 'Stop' : 'Start';
+}
+
+function elapsed() { return run.baseMs + (run.active ? performance.now() - run.startedAt : 0); }
+
+function clearAll() {
+  engine.clear();
+  els.forEach(function (el) { el.remove(); });
+  els.clear(); speakers.clear(); solo = null; sampleShown = false; stick = true;
+  run.baseMs = 0;
+  renderSpeakers(); applyView(); afterRender();
+}
+
+function showSample() {
+  engine.newSession(0);
+  sampleShown = true;
+  stick = false;
+  render(engine.ingest(sampleTokens()));
+  engine.settle();
+  $('scroll').scrollTop = 0;
+}
+
+/* ---------- transcript out ---------- */
+
+function transcriptText() {
+  return engine.state.bubbles.map(function (b) {
+    var sp = speakers.get(b.spk), lang = langOf(b);
+    var o = (b.orig + b.origTail).trim(), t = (b.trans + b.transTail).trim();
+    var line = '[' + fmt(b.t) + '] ' + (sp ? sp.name : 'Speaker') + (lang ? ' (' + lang + ')' : '') + ': ' + o;
+    if (t) line += '\n    → ' + t;
+    return line;
+  }).join('\n\n');
+}
+
+function flash(btn, text) {
+  var old = btn.textContent;
+  btn.textContent = text;
+  setTimeout(function () { btn.textContent = old; }, 1500);
+}
+
+function copyTranscript() {
+  var text = transcriptText(), btn = $('copy');
+  function fallback() {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    ta.remove();
+    flash(btn, ok ? 'Copied' : 'Copy failed');
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function () { flash(btn, 'Copied'); }, fallback);
+  } else fallback();
+}
+
+function saveTranscript() {
+  var d = new Date(), pad = function (n) { return String(n).padStart(2, '0'); };
+  var name = 'meeting-' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes()) + '.txt';
+  var url = URL.createObjectURL(new Blob([transcriptText() + '\n'], { type: 'text/plain;charset=utf-8' }));
+  var a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+}
+
+/* ---------- audio ---------- */
+
+var WORKLET = 'class Tap extends AudioWorkletProcessor{constructor(){super();this.b=new Float32Array(2048);this.n=0}' +
+  'process(i){var c=i[0]&&i[0][0];if(c){for(var k=0;k<c.length;k++){this.b[this.n++]=c[k];if(this.n===this.b.length){this.port.postMessage(this.b.slice(0));this.n=0}}}return true}}' +
+  'registerProcessor("pcm-tap",Tap)';
+
+async function startAudio(stream) {
+  var AC = window.AudioContext || window.webkitAudioContext;
+  var ctx, src;
+  try { ctx = new AC({ sampleRate: RATE }); src = ctx.createMediaStreamSource(stream); }
+  catch (e) { try { if (ctx) ctx.close(); } catch (e2) {} ctx = new AC(); src = ctx.createMediaStreamSource(stream); }
+  if (ctx.state === 'suspended') { try { await ctx.resume(); } catch (e) {} }
+  audio.resample = makeResampler(ctx.sampleRate, RATE);
+  audio.acc = []; audio.accLen = 0;
+  var sink = ctx.createGain(); sink.gain.value = 0; sink.connect(ctx.destination);
+  var node = null;
+  if (ctx.audioWorklet && window.AudioWorkletNode) {
+    try {
+      var url = URL.createObjectURL(new Blob([WORKLET], { type: 'application/javascript' }));
+      await ctx.audioWorklet.addModule(url);
+      URL.revokeObjectURL(url);
+      node = new AudioWorkletNode(ctx, 'pcm-tap');
+      node.port.onmessage = function (e) { onPCM(e.data); };
+    } catch (e) { node = null; }
+  }
+  if (!node) {
+    node = ctx.createScriptProcessor(4096, 1, 1);
+    node.onaudioprocess = function (e) { onPCM(new Float32Array(e.inputBuffer.getChannelData(0))); };
+  }
+  src.connect(node); node.connect(sink);
+  audio.ctx = ctx; audio.stream = stream; audio.node = node; audio.src = src;
+}
+
+function stopAudio() {
+  try { if (audio.node) { audio.node.disconnect(); if (audio.node.port) audio.node.port.onmessage = null; audio.node.onaudioprocess = null; } } catch (e) {}
+  try { if (audio.src) audio.src.disconnect(); } catch (e) {}
+  try { if (audio.stream) audio.stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+  try { if (audio.ctx) audio.ctx.close(); } catch (e) {}
+  audio.ctx = audio.stream = audio.node = audio.src = null;
+  $('level').style.width = '0';
+}
+
+function onPCM(f32) {
+  if (!run.active) return;
+  var now = performance.now();
+  if (now - audio.lastLevel > 100) {
+    var s = 0;
+    for (var i = 0; i < f32.length; i += 4) s += f32[i] * f32[i];
+    var rms = Math.sqrt(s / (f32.length / 4));
+    $('level').style.width = Math.min(100, Math.round(rms * 600)) + '%';
+    audio.lastLevel = now;
+  }
+  var x = audio.resample(f32);
+  if (!x.length) return;
+  audio.acc.push(x); audio.accLen += x.length;
+  if (audio.accLen >= RATE / 10) flushAudio();
+}
+
+function flushAudio() {
+  if (!audio.accLen) return;
+  var pcm = new Int16Array(audio.accLen), o = 0;
+  audio.acc.forEach(function (a) {
+    for (var i = 0; i < a.length; i++) { var v = Math.max(-1, Math.min(1, a[i])); pcm[o++] = v < 0 ? v * 0x8000 : v * 0x7fff; }
+  });
+  audio.acc = []; audio.accLen = 0;
+  sendAudio(pcm.buffer);
+}
+
+function sendAudio(buf) {
+  var ws = run.ws;
+  if (ws && run.open && ws.readyState === 1) {
+    while (run.pending.length) ws.send(run.pending.shift());
+    ws.send(buf);
+  } else {
+    run.pending.push(buf);
+    if (run.pending.length > 80) run.pending.shift();   // keep about 8 seconds
+  }
+}
+
+/* ---------- speech service ---------- */
+
+function buildConfig() {
+  var cfg = {
+    model: MODEL,
+    audio_format: 'pcm_s16le', sample_rate: RATE, num_channels: 1,
+    language_hints: ['en', 'zh', 'ru'],
+    enable_speaker_diarization: true,
+    enable_language_identification: true,
+    enable_endpoint_detection: true,
+    translation: { type: 'one_way', target_language: target() }
+  };
+  var ctx = {}, topic = $('topic').value.trim(), p = parseTerms($('terms').value);
+  if (topic) ctx.general = [{ key: 'domain', value: topic }];
+  if (p.terms.length) ctx.terms = p.terms;
+  if (p.pairs.length) ctx.translation_terms = p.pairs;
+  if (Object.keys(ctx).length) cfg.context = ctx;
+  return cfg;
+}
+
+function fail(msg) {
+  run.fatal = true;
+  stop().then(function () { notice(msg); $('setup').open = true; });
+}
+
+function serverError(m) {
+  var code = m.error_code, detail = m.error_message ? ' (' + m.error_message + ')' : '';
+  if (code === 401) return fail('The speech service rejected the key. Paste it again in Setup.' + detail);
+  if (code === 402) return fail('The speech service account has no credit left. Top it up, then press Start.');
+  if (code === 400 || code === 403 || code === 429) return fail('The speech service refused the session.' + detail);
+  // 408, 413, 500, 503 and anything else: the close handler reconnects
+}
+
+function connect() {
+  var key = $('key').value.trim(), ws;
+  try { ws = new WebSocket(WS_URL, ['soniox-api-key', key]); }
+  catch (e) { fail('That key has characters a key cannot contain. Paste it again in Setup.'); return; }
+  ws.binaryType = 'arraybuffer';
+  run.ws = ws; run.open = false; run.finished = false;
+  var opened = false, gotMessage = false;
+
+  ws.onopen = function () {
+    if (run.ws !== ws) return;
+    opened = true; run.everOpened = true;
+    ws.send(JSON.stringify(buildConfig()));
+    render(engine.newSession(elapsed()));
+    run.open = true;
+    if (run.active) setStatus('listening');
+  };
+  ws.onmessage = function (ev) {
+    var m;
+    try { m = JSON.parse(ev.data); } catch (e) { return; }
+    if (m.error_code) { serverError(m); return; }
+    if (!gotMessage) { gotMessage = true; run.retries = 0; notice(null); }
+    if (m.tokens && m.tokens.length) render(engine.ingest(m.tokens));
+    if (m.finished) run.finished = true;
+  };
+  ws.onclose = function () {
+    if (run.ws !== ws) return;
+    run.ws = null; run.open = false;
+    if (!run.active || run.fatal) return;
+    if (!opened && !run.everOpened) {
+      fail('Could not reach the speech service from this network. Check the connection, or try another network.');
+      return;
+    }
+    run.retries += 1;
+    if (run.retries > 5) { fail('The connection to the speech service keeps dropping. Your transcript so far is kept.'); return; }
+    setStatus('reconnecting');
+    notice('Connection dropped. Reconnecting. Speaker numbers may restart.', 'info');
+    setTimeout(function () { if (run.active && !run.ws) connect(); }, 800 * run.retries);
+  };
+}
+
+/* ---------- start / stop ---------- */
+
+function micMessage(e) {
+  var n = e && e.name;
+  if (n === 'NotAllowedError' || n === 'SecurityError') return 'The microphone is blocked. Allow it for this page in the browser, then press Start.';
+  if (n === 'NotFoundError') return 'No microphone was found on this device.';
+  return 'The microphone could not be opened' + (e && e.message ? ' (' + e.message + ').' : '.');
+}
+
+async function start() {
+  if (run.active) return;
+  notice(null);
+  if (!$('key').value.trim()) {
+    $('setup').open = true;
+    notice('Paste your speech service key in Setup first.', 'info');
+    $('key').focus();
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || window.isSecureContext === false) {
+    notice('This browser only gives pages the microphone on a secure address. Open this file in Chrome or Edge on a computer, or put it on an https address.');
+    return;
+  }
+  setStatus('connecting');
+  var stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: false, noiseSuppression: true, autoGainControl: true } });
+  } catch (e) { setStatus('idle'); notice(micMessage(e)); return; }
+
+  if (sampleShown) clearAll();
+  if (!engine.state.bubbles.length) shownTarget = target();
+  saveSettings();
+  run.active = true; run.fatal = false; run.everOpened = false; run.retries = 0; run.pending = [];
+  run.startedAt = performance.now();
+  stick = true;
+  setStatus('connecting');
+  $('setup').open = false;
+  afterRender();
+  try { await startAudio(stream); }
+  catch (e) { fail('The microphone could not be started' + (e && e.message ? ' (' + e.message + ').' : '.')); return; }
+  if (!run.active) return;
+  connect();
+  if (!run.active) return;
+  run.timer = setInterval(function () { if (run.active && run.open) setStatus('listening'); }, 500);
+  lockScreen();
+}
+
+function waitDone(ws, ms) {
+  return new Promise(function (res) {
+    var t = setTimeout(res, ms);
+    var iv = setInterval(function () { if (run.finished || ws.readyState > 1) { clearTimeout(t); clearInterval(iv); res(); } }, 80);
+    setTimeout(function () { clearInterval(iv); }, ms + 50);
+  });
+}
+
+async function stop() {
+  if (!run.active) return;
+  var ws = run.ws;
+  if (ws && run.open && ws.readyState === 1) flushAudio();
+  run.baseMs = elapsed();
+  run.active = false;
+  clearInterval(run.timer);
+  stopAudio();
+  if (run.wake) { try { run.wake.release(); } catch (e) {} run.wake = null; }
+  setStatus('idle');
+  if (ws && ws.readyState === 1 && !run.fatal) {
+    try { ws.send(''); } catch (e) {}
+    await waitDone(ws, 2500);
+  }
+  if (ws) { try { ws.close(); } catch (e) {} }
+  if (run.ws === ws) run.ws = null;
+  run.open = false; run.pending = [];
+  render(engine.settle());
+}
+
+function lockScreen() {
+  if (!navigator.wakeLock || !navigator.wakeLock.request) return;
+  navigator.wakeLock.request('screen').then(function (w) { run.wake = w; }, function () {});
+}
+
+/* ---------- settings ---------- */
+
+function saveSettings() {
+  store.set('lanes.target', target());
+  store.set('lanes.terms', $('terms').value);
+  store.set('lanes.topic', $('topic').value);
+  store.set('lanes.key', $('remember').checked ? $('key').value.trim() : null);
+  updateSummary();
+}
+
+function updateSummary() {
+  var names = { en: 'English', zh: '中文', ru: 'Русский' };
+  $('setupSummary').textContent = 'into ' + names[target()] + ($('key').value.trim() ? '' : ', key needed');
+}
+
+function loadSettings() {
+  var t = store.get('lanes.target');
+  if (t && $('t-' + t)) $('t-' + t).checked = true;
+  var terms = store.get('lanes.terms');
+  $('terms').value = terms == null ? DEFAULT_TERMS : terms;
+  var topic = store.get('lanes.topic');
+  if (topic != null) $('topic').value = topic;
+  var k = store.get('lanes.key');
+  if (k) { $('key').value = k; $('remember').checked = true; $('setup').open = false; }
+  updateSummary();
+}
+
+/* ---------- wiring ---------- */
+
+$('go').onclick = function () { if (run.active) stop(); else start(); };
+$('view').onclick = function () { lanes = !lanes; applyView(); repaintAll(); afterRender(); };
+$('copy').onclick = copyTranscript;
+$('save').onclick = saveTranscript;
+var clearArmed = null;
+$('clear').onclick = function () {
+  var btn = $('clear');
+  if (run.active) { notice('Press Stop before clearing the conversation.', 'info'); return; }
+  if (!clearArmed) {
+    btn.textContent = 'Tap again';
+    clearArmed = setTimeout(function () { clearArmed = null; btn.textContent = 'Clear'; }, 2500);
+    return;
+  }
+  clearTimeout(clearArmed); clearArmed = null; btn.textContent = 'Clear';
+  clearAll();
+};
+$('keyShow').onclick = function () {
+  var show = $('key').type === 'password';
+  $('key').type = show ? 'text' : 'password';
+  this.textContent = show ? 'Hide' : 'Show';
+  this.setAttribute('aria-pressed', String(show));
+};
+$('key').oninput = updateSummary;
+$('remember').onchange = saveSettings;
+document.querySelectorAll('input[name="target"]').forEach(function (r) {
+  r.onchange = function () {
+    if (run.active) notice('The new language applies the next time you press Start.', 'info');
+    saveSettings();
+  };
+});
+$('scroll').addEventListener('scroll', function () {
+  var sc = $('scroll');
+  stick = sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 60;
+  if (stick) $('latest').hidden = true;
+});
+$('latest').onclick = function () { stick = true; afterRender(); };
+document.addEventListener('visibilitychange', function () {
+  if (document.visibilityState === 'visible' && run.active && !run.wake) lockScreen();
+});
+window.addEventListener('beforeunload', function (e) {
+  if (run.active) { e.preventDefault(); e.returnValue = ''; }
+});
+
+loadSettings();
+lanes = window.matchMedia('(min-width: 900px)').matches;
+applyView();
+showSample();
+setStatus('idle');
+</script>
+</body>
+</html>
