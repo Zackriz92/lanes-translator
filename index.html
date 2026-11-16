@@ -78,7 +78,7 @@ button { cursor: pointer; }
 }
 .field { display: grid; gap: 6px; min-width: 0; align-content: start; }
 .field > label, .field > .lab { font-size: 0.8rem; font-weight: 600; color: var(--muted); letter-spacing: 0.02em; }
-.field input[type="text"], .field input[type="password"], .field textarea {
+.field input[type="text"], .field input[type="password"], .field textarea, .field select {
   width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--bg); min-width: 0;
 }
@@ -145,6 +145,13 @@ button { cursor: pointer; }
 .b time { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
 .main { margin: 0; font-size: 1.2rem; line-height: 1.35; overflow-wrap: anywhere; }
 .sub { margin: 0; font-size: 0.9rem; color: var(--muted); overflow-wrap: anywhere; }
+.xs { display: grid; gap: 4px; margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--line); }
+.x { margin: 0; font-size: 1.05rem; line-height: 1.35; overflow-wrap: anywhere; }
+.x .tag { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); letter-spacing: 0.04em; margin-right: 8px; }
+.checks { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.field select { appearance: auto; }
+.btnrow { display: flex; flex-wrap: wrap; gap: 8px; }
+.speaking { color: var(--s3); font-weight: 700; }
 .tail { opacity: 0.55; }
 .wait { color: var(--muted); }
 .latest {
@@ -189,7 +196,7 @@ button { cursor: pointer; }
         <input type="password" id="key" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your key">
         <button type="button" class="ghost" id="keyShow" aria-pressed="false">Show</button>
       </div>
-      <label class="check"><input type="checkbox" id="remember"> Remember the key on this device</label>
+      <label class="check"><input type="checkbox" id="remember"> Remember keys on this device</label>
       <p class="help">The key stays in this browser and is sent only to the speech service. Create one at <a href="https://console.soniox.com" target="_blank" rel="noopener">console.soniox.com</a>.</p>
     </div>
     <div class="field">
@@ -200,6 +207,13 @@ button { cursor: pointer; }
         <label><input type="radio" name="target" id="t-ru" value="ru"><span lang="ru">Русский</span></label>
       </div>
       <p class="help">It listens for English, Chinese and Russian at the same time. Change this before you press Start.</p>
+      <span class="lab" id="extraLab">Also show every sentence in</span>
+      <div class="checks" role="group" aria-labelledby="extraLab">
+        <label class="check" id="xl-en"><input type="checkbox" id="x-en" checked> English</label>
+        <label class="check" id="xl-zh"><input type="checkbox" id="x-zh" checked> <span lang="zh-Hans">中文</span></label>
+        <label class="check" id="xl-ru"><input type="checkbox" id="x-ru" checked> <span lang="ru">Русский</span></label>
+      </div>
+      <p class="help">So the others can read what you say. Each extra language is a separate stream and adds to the cost.</p>
       <label for="topic">Meeting topic</label>
       <input type="text" id="topic" maxlength="120" value="Shipyard construction, blasting and painting works">
     </div>
@@ -207,6 +221,34 @@ button { cursor: pointer; }
       <label for="terms">Site terms, one per line</label>
       <textarea id="terms" spellcheck="false"></textarea>
       <p class="help">Words it should recognise. To force a translation, write <code>source = target</code>, for example <code>грунтовка = primer</code>.</p>
+    </div>
+    <div class="field">
+      <span class="lab" id="speakLab">Read aloud in</span>
+      <div class="seg" role="radiogroup" aria-labelledby="speakLab">
+        <label><input type="radio" name="speak" id="sp-off" value="off" checked><span>Off</span></label>
+        <label><input type="radio" name="speak" id="sp-zh" value="zh"><span lang="zh-Hans">中文</span></label>
+        <label><input type="radio" name="speak" id="sp-ru" value="ru"><span lang="ru">Русский</span></label>
+        <label><input type="radio" name="speak" id="sp-en" value="en"><span>English</span></label>
+      </div>
+      <div class="field" id="speakOpts" hidden>
+        <span class="lab" id="srcLab">Read aloud what is said in</span>
+        <div class="checks" role="group" aria-labelledby="srcLab">
+          <label class="check" id="rsl-en"><input type="checkbox" id="rs-en" checked> English</label>
+          <label class="check" id="rsl-zh"><input type="checkbox" id="rs-zh"> <span lang="zh-Hans">中文</span></label>
+          <label class="check" id="rsl-ru"><input type="checkbox" id="rs-ru"> <span lang="ru">Русский</span></label>
+        </div>
+        <label for="elKey">ElevenLabs key</label>
+        <input type="password" id="elKey" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your ElevenLabs key">
+        <label for="voice">Voice</label>
+        <select id="voice"><option value="">Load your voices first</option></select>
+        <label for="voiceId">Voice ID</label>
+        <input type="text" id="voiceId" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Filled when you pick a voice, or paste one">
+        <div class="btnrow">
+          <button type="button" class="ghost" id="loadVoices">Load my voices</button>
+          <button type="button" class="ghost" id="testVoice">Test voice</button>
+        </div>
+        <p class="help" id="voiceMsg">Each finished sentence is spoken once. While the voice plays, the microphone pauses so it does not translate itself. ElevenLabs charges per character.</p>
+      </div>
     </div>
   </div>
 </details>
@@ -224,6 +266,7 @@ button { cursor: pointer; }
 <footer class="dock">
   <button type="button" class="go" id="go" data-on="false">Start</button>
   <span class="spacer"></span>
+  <button type="button" class="ghost" id="voiceBtn" aria-pressed="false" hidden>Mute</button>
   <button type="button" class="ghost" id="view" aria-pressed="false" title="Switch between one feed and one lane per speaker">Lanes</button>
   <button type="button" class="ghost" id="copy" disabled>Copy</button>
   <button type="button" class="ghost" id="save" disabled>Save</button>
@@ -249,7 +292,8 @@ function createEngine() {
   function newBubble(spk, startMs, prov) {
     var b = { id: st.nextId++, spk: spk, langs: {}, langTail: null,
               orig: '', trans: '', origTail: '', transTail: '',
-              prov: prov, t: st.offsetMs + (startMs || 0) };
+              prov: prov, t: st.offsetMs + (startMs || 0), t1: 0, t1Tail: 0, extra: {}, extraFin: {}, spoken: 0 };
+    b.t1 = b.t;
     st.bubbles.push(b);
     return b;
   }
@@ -293,7 +337,11 @@ function createEngine() {
       b.orig += text;
       if (t.language) b.langs[t.language] = (b.langs[t.language] || 0) + text.length;
     }
-    if (t.end_ms != null) c.lastEnd = t.end_ms;
+    if (t.end_ms != null) {
+      c.lastEnd = t.end_ms;
+      var e = st.offsetMs + t.end_ms;
+      if (prov) b.t1Tail = Math.max(b.t1Tail, e); else b.t1 = Math.max(b.t1, e);
+    }
     ch.dirty.add(b);
   }
 
@@ -301,7 +349,7 @@ function createEngine() {
     while (st.bubbles.length && st.bubbles[st.bubbles.length - 1].prov) ch.removed.push(st.bubbles.pop());
     for (var i = 0; i < provTouched.length; i++) {
       var b = provTouched[i];
-      b.origTail = ''; b.transTail = ''; b.langTail = null;
+      b.origTail = ''; b.transTail = ''; b.langTail = null; b.t1Tail = 0;
       ch.dirty.add(b);
     }
     provTouched = [];
@@ -332,6 +380,7 @@ function createEngine() {
         if (b.prov || b.origTail || b.transTail) {
           b.orig += b.origTail; b.trans += b.transTail;
           if (b.langTail && !Object.keys(b.langs).length) b.langs[b.langTail] = 1;
+          b.t1 = Math.max(b.t1, b.t1Tail); b.t1Tail = 0;
           b.origTail = ''; b.transTail = ''; b.langTail = null; b.prov = false;
           ch.dirty.add(b);
         }
@@ -357,6 +406,28 @@ function langOf(b) {
   var best = null, n = -1;
   for (var k in b.langs) if (b.langs[k] > n) { n = b.langs[k]; best = k; }
   return best || b.langTail || null;
+}
+
+function bubbleEnd(b) { return Math.max(b.t1 || b.t, b.t1Tail || 0, b.t); }
+
+// Matches translations from a second stream of the same audio to the main
+// conversation by time: each translated stretch goes to the utterance it
+// overlaps most. Returns Map(main bubble id -> text).
+function attachExtras(prim, sec, finalOnly) {
+  var out = new Map();
+  for (var i = 0; i < sec.length; i++) {
+    var s = sec[i], text = (finalOnly ? s.trans : s.trans + s.transTail).trim();
+    if (!text || !(s.orig + s.origTail)) continue;
+    var s0 = s.t, s1 = bubbleEnd(s), best = null, bestOv = -Infinity;
+    for (var j = prim.length - 1; j >= 0; j--) {
+      var p = prim[j];
+      if (p.t < s0 - 60000) break;
+      var ov = Math.min(bubbleEnd(p), s1) - Math.max(p.t, s0);
+      if (ov > bestOv) { bestOv = ov; best = p; }
+    }
+    if (best && bestOv > -3000) out.set(best.id, out.has(best.id) ? out.get(best.id) + ' ' + text : text);
+  }
+  return out;
 }
 
 function sampleTokens() {
@@ -414,6 +485,15 @@ var MODEL = 'stt-rt-v6';
 var RATE = 16000;
 var LANG_TAG = { en: 'EN', zh: '中文', ru: 'RU' };
 var LANG_ATTR = { en: 'en', zh: 'zh-Hans', ru: 'ru' };
+var LANG_NAME = { en: 'English', zh: '中文', ru: 'Русский' };
+var LANGS = ['en', 'zh', 'ru'];
+var SAMPLE_EXTRA = [
+  { zh: '我们今天早上完成了分段的喷砂。' },
+  { ru: 'Можно начать нанесение грунтовки сегодня днём?' },
+  { ru: 'Только после того, как ОТК примет профиль поверхности.', zh: '要等质检确认表面粗糙度之后才行。' },
+  { zh: '检验员两点钟来。' },
+  { ru: 'Хорошо, тогда мы сначала подготовим оборудование.' }
+];
 var DEFAULT_TERMS = ['DFT', 'Sa 2.5', 'holding primer', 'surface profile', '喷砂', '底漆', 'грунтовка', 'дробеструйная очистка'].join('\n');
 
 function $(id) { return document.getElementById(id); }
@@ -430,9 +510,11 @@ var shownTarget = 'en';       // language the conversation on screen was transla
 var sampleShown = false;
 var stick = true;
 
-var run = { active: false, ws: null, open: false, everOpened: false, finished: false, fatal: false,
-            retries: 0, pending: [], baseMs: 0, startedAt: 0, timer: null, wake: null };
-var audio = { ctx: null, stream: null, node: null, src: null, resample: null, acc: [], accLen: 0, lastLevel: 0 };
+var run = { active: false, fatal: false, baseMs: 0, startedAt: 0, timer: null, wake: null };
+var streams = [];            // one connection per language; streams[0] is the main one
+var secEngines = {};         // language -> engine for the extra translations
+var extraLangs = [];         // extra languages shown under each sentence
+var audio = { ctx: null, stream: null, node: null, src: null, resample: null, acc: [], accLen: 0, sent: 0, lastLevel: 0 };
 
 /* ---------- rendering ---------- */
 
@@ -496,12 +578,54 @@ function paint(b) {
     setText(main, b.orig, b.origTail, lang);
     sub.hidden = true; sub.textContent = '';
   }
+  paintExtras(el, b);
+}
+
+function paintExtras(el, b) {
+  var xs = el.querySelector('.xs'), any = false;
+  xs.textContent = '';
+  extraLangs.forEach(function (lang) {
+    var text = ((b.extra && b.extra[lang]) || '').trim();
+    if (!text) return;
+    any = true;
+    var p = document.createElement('p'), tag = document.createElement('span'), body = document.createElement('span');
+    p.className = 'x'; tag.className = 'tag';
+    tag.textContent = LANG_TAG[lang];
+    body.lang = LANG_ATTR[lang]; body.textContent = text;
+    p.appendChild(tag); p.appendChild(body); xs.appendChild(p);
+  });
+  xs.hidden = !any;
+}
+
+function computeExtras(dirty) {
+  var prim = engine.state.bubbles;
+  Object.keys(secEngines).forEach(function (lang) {
+    var map = attachExtras(prim, secEngines[lang].state.bubbles);
+    var fin = attachExtras(prim, secEngines[lang].state.bubbles, true);
+    prim.forEach(function (b) {
+      b.extraFin[lang] = fin.get(b.id) || '';
+      var v = map.get(b.id) || '';
+      if ((b.extra[lang] || '') !== v) { b.extra[lang] = v; dirty.add(b); }
+    });
+  });
+}
+
+var extrasTimer = null;
+function scheduleExtras() {
+  if (extrasTimer) return;
+  extrasTimer = setTimeout(function () {
+    extrasTimer = null;
+    var dirty = new Set();
+    computeExtras(dirty);
+    dirty.forEach(paint);
+    if (dirty.size) afterRender();
+  }, 250);
 }
 
 function makeEl(b) {
   var el = document.createElement('article');
   el.className = 'b';
-  el.innerHTML = '<div class="b-head"><span class="who"></span><span class="lang"></span><time></time></div><p class="main"></p><p class="sub" hidden></p>';
+  el.innerHTML = '<div class="b-head"><span class="who"></span><span class="lang"></span><time></time></div><p class="main"></p><p class="sub" hidden></p><div class="xs" hidden></div>';
   els.set(b.id, el);
   $('feed').appendChild(el);
 }
@@ -509,6 +633,7 @@ function makeEl(b) {
 function render(ch) {
   ch.removed.forEach(function (b) { var el = els.get(b.id); if (el) el.remove(); els.delete(b.id); });
   ch.added.forEach(function (b) { if (engine.state.bubbles.indexOf(b) >= 0) makeEl(b); });
+  computeExtras(ch.dirty);
   ch.dirty.forEach(paint);
   afterRender();
 }
@@ -613,6 +738,8 @@ function clearAll() {
   engine.clear();
   els.forEach(function (el) { el.remove(); });
   els.clear(); speakers.clear(); solo = null; sampleShown = false; stick = true;
+  secEngines = {}; extraLangs = [];
+  tts.stopAll();
   run.baseMs = 0;
   renderSpeakers(); applyView(); afterRender();
 }
@@ -621,7 +748,10 @@ function showSample() {
   engine.newSession(0);
   sampleShown = true;
   stick = false;
-  render(engine.ingest(sampleTokens()));
+  var ch = engine.ingest(sampleTokens());
+  engine.state.bubbles.forEach(function (b, i) { b.extra = SAMPLE_EXTRA[i] || {}; b.spoken = Infinity; });
+  extraLangs = selectedExtras('en');
+  render(ch);
   engine.settle();
   $('scroll').scrollTop = 0;
 }
@@ -634,6 +764,10 @@ function transcriptText() {
     var o = (b.orig + b.origTail).trim(), t = (b.trans + b.transTail).trim();
     var line = '[' + fmt(b.t) + '] ' + (sp ? sp.name : 'Speaker') + (lang ? ' (' + lang + ')' : '') + ': ' + o;
     if (t) line += '\n    → ' + t;
+    extraLangs.forEach(function (l) {
+      var x = ((b.extra && b.extra[l]) || '').trim();
+      if (x) line += '\n    [' + l + '] ' + x;
+    });
     return line;
   }).join('\n\n');
 }
@@ -683,7 +817,7 @@ async function startAudio(stream) {
   catch (e) { try { if (ctx) ctx.close(); } catch (e2) {} ctx = new AC(); src = ctx.createMediaStreamSource(stream); }
   if (ctx.state === 'suspended') { try { await ctx.resume(); } catch (e) {} }
   audio.resample = makeResampler(ctx.sampleRate, RATE);
-  audio.acc = []; audio.accLen = 0;
+  audio.acc = []; audio.accLen = 0; audio.sent = 0;
   var sink = ctx.createGain(); sink.gain.value = 0; sink.connect(ctx.destination);
   var node = null;
   if (ctx.audioWorklet && window.AudioWorkletNode) {
@@ -714,6 +848,7 @@ function stopAudio() {
 
 function onPCM(f32) {
   if (!run.active) return;
+  if (tts.muting()) f32 = new Float32Array(f32.length);
   var now = performance.now();
   if (now - audio.lastLevel > 100) {
     var s = 0;
@@ -735,23 +870,33 @@ function flushAudio() {
     for (var i = 0; i < a.length; i++) { var v = Math.max(-1, Math.min(1, a[i])); pcm[o++] = v < 0 ? v * 0x8000 : v * 0x7fff; }
   });
   audio.acc = []; audio.accLen = 0;
-  sendAudio(pcm.buffer);
+  var t = run.baseMs + audio.sent / (RATE / 1000);
+  audio.sent += pcm.length;
+  streams.forEach(function (s) { feed(s, pcm.buffer, t); });
 }
 
-function sendAudio(buf) {
-  var ws = run.ws;
-  if (ws && run.open && ws.readyState === 1) {
-    while (run.pending.length) ws.send(run.pending.shift());
-    ws.send(buf);
+// Every stream gets the same audio, stamped with the same clock, so their
+// timestamps line up and translations can be matched to the right sentence.
+function feed(s, buf, t) {
+  if (s.dead) return;
+  var ws = s.ws;
+  if (ws && s.open && ws.readyState === 1) {
+    while (s.pending.length) push(s, ws, s.pending.shift());
+    push(s, ws, { buf: buf, t: t });
   } else {
-    run.pending.push(buf);
-    if (run.pending.length > 80) run.pending.shift();   // keep about 8 seconds
+    s.pending.push({ buf: buf, t: t });
+    if (s.pending.length > 80) s.pending.shift();   // keep about 8 seconds
   }
+}
+
+function push(s, ws, c) {
+  if (s.needOffset) { s.engine.state.offsetMs = c.t; s.needOffset = false; }
+  ws.send(c.buf);
 }
 
 /* ---------- speech service ---------- */
 
-function buildConfig() {
+function buildConfig(lang) {
   var cfg = {
     model: MODEL,
     audio_format: 'pcm_s16le', sample_rate: RATE, num_channels: 1,
@@ -759,7 +904,7 @@ function buildConfig() {
     enable_speaker_diarization: true,
     enable_language_identification: true,
     enable_endpoint_detection: true,
-    translation: { type: 'one_way', target_language: target() }
+    translation: { type: 'one_way', target_language: lang }
   };
   var ctx = {}, topic = $('topic').value.trim(), p = parseTerms($('terms').value);
   if (topic) ctx.general = [{ key: 'domain', value: topic }];
@@ -769,56 +914,86 @@ function buildConfig() {
   return cfg;
 }
 
+function makeStream(lang, primary, eng) {
+  return { lang: lang, primary: primary, engine: eng, ws: null, open: false, finished: false,
+           pending: [], retries: 0, everOpened: false, needOffset: false, dead: false };
+}
+
 function fail(msg) {
   run.fatal = true;
   stop().then(function () { notice(msg); $('setup').open = true; });
 }
 
-function serverError(m) {
+function dropStream(s, why) {
+  s.dead = true; s.pending = [];
+  var ws = s.ws; s.ws = null; s.open = false;
+  try { if (ws) ws.close(); } catch (e) {}
+  if (run.active && !run.fatal) notice('The ' + LANG_NAME[s.lang] + ' translation stopped' + (why ? ' (' + why + ')' : '') + '. Everything else keeps running.', 'info');
+}
+
+function serverError(s, m) {
   var code = m.error_code, detail = m.error_message ? ' (' + m.error_message + ')' : '';
+  if (!s.primary) {
+    if (code === 400 || code === 401 || code === 402 || code === 403 || code === 429) dropStream(s, m.error_message || 'error ' + code);
+    return;
+  }
   if (code === 401) return fail('The speech service rejected the key. Paste it again in Setup.' + detail);
   if (code === 402) return fail('The speech service account has no credit left. Top it up, then press Start.');
   if (code === 400 || code === 403 || code === 429) return fail('The speech service refused the session.' + detail);
   // 408, 413, 500, 503 and anything else: the close handler reconnects
 }
 
-function connect() {
+function connect(s) {
   var key = $('key').value.trim(), ws;
   try { ws = new WebSocket(WS_URL, ['soniox-api-key', key]); }
-  catch (e) { fail('That key has characters a key cannot contain. Paste it again in Setup.'); return; }
+  catch (e) {
+    if (s.primary) fail('That key has characters a key cannot contain. Paste it again in Setup.'); else s.dead = true;
+    return;
+  }
   ws.binaryType = 'arraybuffer';
-  run.ws = ws; run.open = false; run.finished = false;
-  var opened = false, gotMessage = false;
+  s.ws = ws; s.open = false; s.finished = false;
+  var opened = false, got = false;
 
   ws.onopen = function () {
-    if (run.ws !== ws) return;
-    opened = true; run.everOpened = true;
-    ws.send(JSON.stringify(buildConfig()));
-    render(engine.newSession(elapsed()));
-    run.open = true;
-    if (run.active) setStatus('listening');
+    if (s.ws !== ws) return;
+    opened = true; s.everOpened = true;
+    ws.send(JSON.stringify(buildConfig(s.lang)));
+    var ch = s.engine.newSession(0);
+    s.needOffset = true;
+    if (s.primary) render(ch);
+    s.open = true;
+    if (s.primary && run.active) setStatus('listening');
   };
   ws.onmessage = function (ev) {
     var m;
     try { m = JSON.parse(ev.data); } catch (e) { return; }
-    if (m.error_code) { serverError(m); return; }
-    if (!gotMessage) { gotMessage = true; run.retries = 0; notice(null); }
-    if (m.tokens && m.tokens.length) render(engine.ingest(m.tokens));
-    if (m.finished) run.finished = true;
+    if (m.error_code) { serverError(s, m); return; }
+    if (!got) { got = true; if (s.primary && s.retries) notice(null); s.retries = 0; }
+    if (m.tokens && m.tokens.length) {
+      var ch = s.engine.ingest(m.tokens);
+      if (s.primary) render(ch); else scheduleExtras();
+    }
+    if (m.finished) s.finished = true;
   };
   ws.onclose = function () {
-    if (run.ws !== ws) return;
-    run.ws = null; run.open = false;
-    if (!run.active || run.fatal) return;
-    if (!opened && !run.everOpened) {
+    if (s.ws !== ws) return;
+    s.ws = null; s.open = false;
+    if (!run.active || run.fatal || s.dead) return;
+    if (s.primary && !opened && !s.everOpened) {
       fail('Could not reach the speech service from this network. Check the connection, or try another network.');
       return;
     }
-    run.retries += 1;
-    if (run.retries > 5) { fail('The connection to the speech service keeps dropping. Your transcript so far is kept.'); return; }
-    setStatus('reconnecting');
-    notice('Connection dropped. Reconnecting. Speaker numbers may restart.', 'info');
-    setTimeout(function () { if (run.active && !run.ws) connect(); }, 800 * run.retries);
+    s.retries += 1;
+    if (s.retries > 5) {
+      if (s.primary) fail('The connection to the speech service keeps dropping. Your transcript so far is kept.');
+      else dropStream(s, 'connection lost');
+      return;
+    }
+    if (s.primary) {
+      setStatus('reconnecting');
+      notice('Connection dropped. Reconnecting. Speaker numbers may restart.', 'info');
+    }
+    setTimeout(function () { if (run.active && !s.ws && !s.dead) connect(s); }, 800 * s.retries);
   };
 }
 
@@ -834,6 +1009,7 @@ function micMessage(e) {
 async function start() {
   if (run.active) return;
   notice(null);
+  if (speakLang() !== 'off') tts.unlock();   // must run inside the tap, before any wait
   if (!$('key').value.trim()) {
     $('setup').open = true;
     notice('Paste your speech service key in Setup first.', 'info');
@@ -853,7 +1029,14 @@ async function start() {
   if (sampleShown) clearAll();
   if (!engine.state.bubbles.length) shownTarget = target();
   saveSettings();
-  run.active = true; run.fatal = false; run.everOpened = false; run.retries = 0; run.pending = [];
+  var main = target(), extras = selectedExtras(main), sp = speakLang();
+  if (sp !== 'off' && sp !== main && extras.indexOf(sp) < 0) extras.push(sp);
+  engine.state.bubbles.forEach(function (b) { b.spoken = Infinity; });
+  tts.reset();
+  extras.forEach(function (l) { if (!secEngines[l]) secEngines[l] = createEngine(); });
+  extraLangs = LANGS.filter(function (l) { return !!secEngines[l]; });
+  streams = [makeStream(main, true, engine)].concat(extras.map(function (l) { return makeStream(l, false, secEngines[l]); }));
+  run.active = true; run.fatal = false;
   run.startedAt = performance.now();
   stick = true;
   setStatus('connecting');
@@ -862,37 +1045,41 @@ async function start() {
   try { await startAudio(stream); }
   catch (e) { fail('The microphone could not be started' + (e && e.message ? ' (' + e.message + ').' : '.')); return; }
   if (!run.active) return;
-  connect();
+  streams.forEach(connect);
   if (!run.active) return;
-  run.timer = setInterval(function () { if (run.active && run.open) setStatus('listening'); }, 500);
+  run.timer = setInterval(function () { if (run.active && streams[0] && streams[0].open) setStatus('listening'); }, 500);
   lockScreen();
 }
 
-function waitDone(ws, ms) {
+function waitDone(list, ms) {
   return new Promise(function (res) {
-    var t = setTimeout(res, ms);
-    var iv = setInterval(function () { if (run.finished || ws.readyState > 1) { clearTimeout(t); clearInterval(iv); res(); } }, 80);
-    setTimeout(function () { clearInterval(iv); }, ms + 50);
+    var t0 = performance.now();
+    var iv = setInterval(function () {
+      var done = list.every(function (s) { return s.finished || !s.ws || s.ws.readyState > 1; });
+      if (done || performance.now() - t0 > ms) { clearInterval(iv); res(); }
+    }, 80);
   });
 }
 
 async function stop() {
   if (!run.active) return;
-  var ws = run.ws;
-  if (ws && run.open && ws.readyState === 1) flushAudio();
+  flushAudio();
   run.baseMs = elapsed();
   run.active = false;
   clearInterval(run.timer);
   stopAudio();
   if (run.wake) { try { run.wake.release(); } catch (e) {} run.wake = null; }
   setStatus('idle');
-  if (ws && ws.readyState === 1 && !run.fatal) {
-    try { ws.send(''); } catch (e) {}
-    await waitDone(ws, 2500);
+  var live = streams.filter(function (s) { return s.ws && s.open && s.ws.readyState === 1; });
+  if (live.length && !run.fatal) {
+    live.forEach(function (s) { try { s.ws.send(''); } catch (e) {} });
+    await waitDone(live, 2500);
   }
-  if (ws) { try { ws.close(); } catch (e) {} }
-  if (run.ws === ws) run.ws = null;
-  run.open = false; run.pending = [];
+  streams.forEach(function (s) {
+    var ws = s.ws; s.ws = null; s.open = false; s.pending = [];
+    try { if (ws) ws.close(); } catch (e) {}
+  });
+  Object.keys(secEngines).forEach(function (l) { secEngines[l].settle(); });
   render(engine.settle());
 }
 
@@ -908,12 +1095,30 @@ function saveSettings() {
   store.set('lanes.terms', $('terms').value);
   store.set('lanes.topic', $('topic').value);
   store.set('lanes.key', $('remember').checked ? $('key').value.trim() : null);
+  store.set('lanes.extra', LANGS.filter(function (l) { return $('x-' + l).checked; }).join(','));
+  store.set('lanes.speak', speakLang());
+  store.set('lanes.speakSrc', LANGS.filter(function (l) { return $('rs-' + l).checked; }).join(','));
+  store.set('lanes.voiceId', $('voiceId').value.trim());
+  store.set('lanes.elKey', $('remember').checked ? $('elKey').value.trim() : null);
+  syncSpeak();
   updateSummary();
 }
 
+function selectedExtras(main) {
+  main = main || target();
+  return LANGS.filter(function (l) { return l !== main && $('x-' + l).checked; });
+}
+
+function syncExtraBoxes() {
+  var main = target();
+  LANGS.forEach(function (l) { $('xl-' + l).hidden = l === main; });
+}
+
 function updateSummary() {
-  var names = { en: 'English', zh: '中文', ru: 'Русский' };
-  $('setupSummary').textContent = 'into ' + names[target()] + ($('key').value.trim() ? '' : ', key needed');
+  var extra = selectedExtras().map(function (l) { return LANG_NAME[l]; });
+  var sp = speakLang();
+  $('setupSummary').textContent = 'into ' + LANG_NAME[target()] + (extra.length ? ', also ' + extra.join(' and ') : '') +
+    (sp !== 'off' ? ', reads aloud in ' + LANG_NAME[sp] : '') + ($('key').value.trim() ? '' : ', key needed');
 }
 
 function loadSettings() {
@@ -921,10 +1126,23 @@ function loadSettings() {
   if (t && $('t-' + t)) $('t-' + t).checked = true;
   var terms = store.get('lanes.terms');
   $('terms').value = terms == null ? DEFAULT_TERMS : terms;
+  var ex = store.get('lanes.extra');
+  if (ex != null) LANGS.forEach(function (l) { $('x-' + l).checked = ex.split(',').indexOf(l) >= 0; });
+  syncExtraBoxes();
   var topic = store.get('lanes.topic');
   if (topic != null) $('topic').value = topic;
   var k = store.get('lanes.key');
   if (k) { $('key').value = k; $('remember').checked = true; $('setup').open = false; }
+  var sp = store.get('lanes.speak');
+  if (sp && $('sp-' + sp)) $('sp-' + sp).checked = true;
+  var ss = store.get('lanes.speakSrc');
+  if (ss != null) LANGS.forEach(function (l) { $('rs-' + l).checked = ss.split(',').indexOf(l) >= 0; });
+  var ek = store.get('lanes.elKey');
+  if (ek) { $('elKey').value = ek; $('remember').checked = true; }
+  var vid = store.get('lanes.voiceId');
+  if (vid) $('voiceId').value = vid;
+  try { fillVoices(JSON.parse(store.get('lanes.voices') || '[]'), true); } catch (e) {}
+  syncSpeak();
   updateSummary();
 }
 
@@ -957,6 +1175,12 @@ $('remember').onchange = saveSettings;
 document.querySelectorAll('input[name="target"]').forEach(function (r) {
   r.onchange = function () {
     if (run.active) notice('The new language applies the next time you press Start.', 'info');
+    syncExtraBoxes(); saveSettings();
+  };
+});
+LANGS.forEach(function (l) {
+  $('x-' + l).onchange = function () {
+    if (run.active) notice('The change applies the next time you press Start.', 'info');
     saveSettings();
   };
 });
@@ -972,6 +1196,237 @@ document.addEventListener('visibilitychange', function () {
 window.addEventListener('beforeunload', function (e) {
   if (run.active) { e.preventDefault(); e.returnValue = ''; }
 });
+
+/* ---------- read aloud (ElevenLabs) ---------- */
+
+var EL_API = 'https://api.elevenlabs.io';
+var EL_MODEL = 'eleven_flash_v2_5';
+var TEST_LINE = { en: 'Hello. This is the voice that will read the meeting aloud.',
+                  zh: '你好，我会在会议中为大家朗读翻译。',
+                  ru: 'Здравствуйте. Этим голосом я буду озвучивать перевод на совещании.' };
+
+function speakLang() {
+  var r = document.querySelector('input[name="speak"]:checked');
+  return r ? r.value : 'off';
+}
+
+function speakSources() {
+  var o = {};
+  LANGS.forEach(function (l) { o[l] = $('rs-' + l).checked; });
+  return o;
+}
+
+function syncSpeak() {
+  var sp = speakLang();
+  $('speakOpts').hidden = sp === 'off';
+  LANGS.forEach(function (l) { $('rsl-' + l).hidden = l === sp; });
+  $('voiceBtn').hidden = sp === 'off';
+}
+
+function voiceMsg(text) { $('voiceMsg').textContent = text; }
+
+async function elError(r) {
+  var d = '';
+  try {
+    var j = await r.json(), x = j && j.detail;
+    if (typeof x === 'string') d = x;
+    else if (x && x.message) d = x.message;
+    else if (Array.isArray(x) && x[0] && x[0].msg) d = x[0].msg;
+  } catch (e) {}
+  var err = new Error(d || ('error ' + r.status));
+  err.status = r.status;
+  return err;
+}
+
+var tts = (function () {
+  var ctx = null, queue = [], busy = false, src = null, sounding = false, quietUntil = 0;
+  var api = { on: true, disabled: false };
+
+  api.unlock = function () {
+    try {
+      if (!ctx) { var AC = window.AudioContext || window.webkitAudioContext; ctx = new AC(); }
+      if (ctx.state === 'suspended') ctx.resume();
+      var b = ctx.createBuffer(1, 1, 22050), s = ctx.createBufferSource();
+      s.buffer = b; s.connect(ctx.destination); s.start(0);
+    } catch (e) {}
+  };
+
+  function decode(buf) {
+    return new Promise(function (res, rej) { ctx.decodeAudioData(buf, res, rej); });
+  }
+
+  function fetchAudio(text, lang) {
+    var key = $('elKey').value.trim(), voice = $('voiceId').value.trim();
+    return fetch(EL_API + '/v1/text-to-speech/' + encodeURIComponent(voice) + '?output_format=mp3_44100_64', {
+      method: 'POST',
+      headers: { 'xi-api-key': key, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+      body: JSON.stringify({ text: text, model_id: EL_MODEL, language_code: lang })
+    }).then(function (r) {
+      if (!r.ok) return elError(r).then(function (e) { throw e; });
+      return r.arrayBuffer();
+    }).then(decode);
+  }
+
+  function failed(err) {
+    var st = err && err.status, d = err && err.message ? ' (' + err.message + ')' : '';
+    if (st === 401 || st === 402 || st === 403) {
+      api.disabled = true; queue = [];
+      notice('ElevenLabs refused to read aloud. Check the key and that it has credit left.' + d);
+    } else if (st === 404 || st === 400 || st === 422) {
+      api.disabled = true; queue = [];
+      notice('ElevenLabs could not use that voice. Pick another voice in Setup.' + d);
+    } else if (st === 429) {
+      notice('ElevenLabs is busy, so one sentence was not read aloud.', 'info');
+    } else if (!st) {
+      notice('Could not reach ElevenLabs, so one sentence was not read aloud.', 'info');
+    } else {
+      notice('ElevenLabs could not read one sentence aloud.' + d, 'info');
+    }
+  }
+
+  function setPlaying(on) {
+    sounding = on;
+    if (!on) quietUntil = performance.now() + 350;
+    $('voiceBtn').classList.toggle('speaking', on);
+  }
+
+  function pump() {
+    if (busy || !queue.length) return;
+    busy = true;
+    var item = queue.shift();
+    item.p.then(function (buf) {
+      if (!api.on || api.disabled) { done(); return; }
+      src = ctx.createBufferSource();
+      src.buffer = buf; src.connect(ctx.destination);
+      src.onended = done;
+      setPlaying(true);
+      src.start(0);
+    }, function (err) { failed(err); done(); });
+  }
+
+  function done() {
+    if (src) { try { src.onended = null; } catch (e) {} }
+    src = null; busy = false;
+    if (sounding) setPlaying(false);
+    pump();
+  }
+
+  api.say = function (text, lang) {
+    if (api.disabled || !api.on) return;
+    if (!$('elKey').value.trim() || !$('voiceId').value.trim()) {
+      api.disabled = true;
+      notice('Add your ElevenLabs key and pick a voice in Setup to read aloud.', 'info');
+      return;
+    }
+    if (!ctx) api.unlock();
+    var item = { p: fetchAudio(text, lang) };
+    item.p.catch(function () {});
+    queue.push(item);
+    pump();
+  };
+
+  api.muting = function () { return sounding || performance.now() < quietUntil; };
+
+  api.stopAll = function () {
+    queue = [];
+    if (src) { try { src.stop(0); } catch (e) {} }
+  };
+
+  api.reset = function () { api.disabled = false; };
+
+  return api;
+})();
+
+// Speaks each sentence's translation once it has settled, in order.
+function checkSpeak() {
+  var lang = speakLang();
+  if (lang === 'off' || !tts.on || tts.disabled || sampleShown) return;
+  var src = speakSources(), now = performance.now(), bs = engine.state.bubbles;
+  for (var i = Math.max(0, bs.length - 12); i < bs.length; i++) {
+    var b = bs[i];
+    if (b.spoken === Infinity || b.prov) continue;
+    var from = langOf(b);
+    if (!from || from === lang || !src[from]) continue;
+    var text = lang === shownTarget ? b.trans : ((b.extraFin && b.extraFin[lang]) || '');
+    if (b.spText !== text) { b.spText = text; b.spSince = now; continue; }
+    if (b.origTail || now - b.spSince < 900) continue;
+    var spoken = b.spoken || 0;
+    if (text.length <= spoken) continue;
+    var piece = text.slice(spoken).trim();
+    b.spoken = text.length;
+    if (piece) tts.say(piece, lang);
+  }
+}
+setInterval(checkSpeak, 400);
+
+function fillVoices(list, quiet) {
+  var sel = $('voice'), cur = $('voiceId').value.trim();
+  sel.textContent = '';
+  var first = document.createElement('option');
+  first.value = ''; first.textContent = list.length ? 'Choose a voice' : 'Load your voices first';
+  sel.appendChild(first);
+  list.forEach(function (v) {
+    var o = document.createElement('option');
+    o.value = v.id; o.textContent = v.name + (v.desc ? ' · ' + v.desc : '');
+    if (v.id === cur) o.selected = true;
+    sel.appendChild(o);
+  });
+  if (!quiet) store.set('lanes.voices', JSON.stringify(list));
+}
+
+async function loadVoices() {
+  var key = $('elKey').value.trim(), btn = $('loadVoices');
+  if (!key) { voiceMsg('Paste your ElevenLabs key first.'); $('elKey').focus(); return; }
+  btn.disabled = true; btn.textContent = 'Loading…';
+  try {
+    var all = [], token = null, pages = 0;
+    do {
+      var url = EL_API + '/v2/voices?page_size=100' + (token ? '&next_page_token=' + encodeURIComponent(token) : '');
+      var r = await fetch(url, { headers: { 'xi-api-key': key } });
+      if (!r.ok) throw await elError(r);
+      var j = await r.json();
+      all = all.concat(j.voices || []);
+      token = j.has_more ? j.next_page_token : null;
+    } while (token && ++pages < 5);
+    var list = all.map(function (v) {
+      var l = v.labels || {}, g = (l.gender || '').toLowerCase();
+      var desc = [g, l.accent, l.age].filter(Boolean).join(', ');
+      return { id: v.voice_id, name: v.name || v.voice_id, desc: desc, male: g === 'male' };
+    }).sort(function (a, b) { return (b.male - a.male) || a.name.localeCompare(b.name); });
+    fillVoices(list.map(function (v) { return { id: v.id, name: v.name, desc: v.desc }; }));
+    var men = list.filter(function (v) { return v.male; }).length;
+    voiceMsg(list.length + ' voices loaded, ' + men + ' of them male, listed first. Pick one, then press Test voice.');
+  } catch (e) {
+    voiceMsg(e && e.status === 401
+      ? 'ElevenLabs refused the key, or the key is not allowed to read voices. You can paste a voice ID instead.'
+      : 'Could not load voices' + (e && e.message ? ' (' + e.message + ')' : '') + '. You can paste a voice ID instead.');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Load my voices';
+  }
+}
+
+$('loadVoices').onclick = loadVoices;
+$('voice').onchange = function () { if (this.value) { $('voiceId').value = this.value; saveSettings(); } };
+$('voiceId').onchange = saveSettings;
+$('elKey').onchange = saveSettings;
+document.querySelectorAll('input[name="speak"]').forEach(function (r) { r.onchange = saveSettings; });
+LANGS.forEach(function (l) { $('rs-' + l).onchange = saveSettings; });
+$('testVoice').onclick = function () {
+  var lang = speakLang();
+  if (lang === 'off') { voiceMsg('Choose a language to read aloud in first.'); return; }
+  tts.unlock(); tts.reset(); tts.on = true; syncVoiceBtn();
+  notice(null);
+  tts.say(TEST_LINE[lang], lang);
+};
+function syncVoiceBtn() {
+  $('voiceBtn').textContent = tts.on ? 'Mute' : 'Unmute';
+  $('voiceBtn').setAttribute('aria-pressed', String(!tts.on));
+}
+$('voiceBtn').onclick = function () {
+  tts.on = !tts.on;
+  if (tts.on) tts.unlock(); else tts.stopAll();
+  syncVoiceBtn();
+};
 
 loadSettings();
 lanes = window.matchMedia('(min-width: 900px)').matches;
